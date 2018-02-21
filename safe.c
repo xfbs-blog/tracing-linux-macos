@@ -21,11 +21,11 @@ bool validate(char *seed)
 
 int main(int argc, char *argv[])
 {
-  if(validate(".secret_file_seed")) {
-    printf("congratulations!\n");
-    return 0;
-  } else {
-    printf("oops, secret file is missing!\n");
+  if(!validate(".secret_file_seed")) {
+    fprintf(stderr, "error: secret file is missing.\n");
     return 1;
   }
+
+  printf("congratulations!\n");
+  return 0;
 }

@@ -2,7 +2,7 @@ If you’re coming from Linux, you may be familiar with the `ptrace` family of c
 
 ## tracing system calls
 
-Let’s say you have an application, a small program, and you want to know analyze what it does. In this example, I’ll use a small program that checks if a file is present — if it’s not present, it will fail with a warning.
+Let’s say you have an application, a small program, and you want to know analyze what it does. In this example, I’ll use a small program that checks if a file is present — if it’s not present, it will fail with a warning. I am using the `access` function, which is a POSIX API, to check if a file exists.
 
 ###### File safe.c, lines 0–31:
 
@@ -30,45 +30,39 @@ bool validate(char *seed)
 
 int main(int argc, char *argv[])
 {
-  if(validate(".secret_file_seed")) {
-    printf("congratulations!\n");
-    return 0;
-  } else {
-    printf("oops, secret file is missing!\n");
+  if(!validate(".secret_file_seed")) {
+    fprintf(stderr, "error: secret file is missing.\n");
     return 1;
   }
+
+  printf("congratulations!\n");
+  return 0;
 }
 ```
 
-And a Makefile to build things:
+For convenience, we can also use a small `Makefile` to build things, which is really simple at this point since this program can be built with all default actions.
 
-###### File Makefile, lines 0–1:
+###### File Makefile, lines 0–2:
 
 ```makefile
-safe:
+# build all binaries (default target).
+all: safe
 ```
 
 ### on linux
 
-I set up a quick ubuntu machine to do these tests.
+I set up an Ubuntu machine to do these tests. You’ll need some packages to compile this example — `make`, a compiler (`gcc` or `clang` will do just fine), and I’l installing `musl` here, but it’s optional, so if you don’t want to use it, you don’t have to.
 
-    apt update
-    apt install build-essential musl musl-dev musl-tools
-
-We’ll need a way to build this — so we’ll just add
-
-###### File Makefile, lines 2–4:
-
-```makefile
-linux: CC=musl-gcc
-linux: safe
-```
+    $ apt update
+    $ apt install -y build-essential musl musl-dev musl-tools
 
 Why musl? If we don’t statically link to libc, there will be less clutter in the output, as loading the `ld` library and `libc` each produce syscalls. It’s not really necessary, but it simplifies things for us right now.
 
+Why I’m using musl, you ask? Well, it’s just for convenience really. Using musl means that your program is linked statically, and not dynamically, to it. And that means fewer syscalls, which translates to less clutter in the output.
+
 Compiling and running it, we get:
 
-    $ make linux
+    $ CC=musl-gcc make linux
     $ ./safe
     oops, secret file is missing!
 
@@ -98,12 +92,6 @@ So, strace can be used to snoop on a program and watch what it’s doing to the 
 ### on macOS
 
 Let’s add a target for macOS to the makefile:
-
-###### File Makefile, lines 5–6:
-
-```makefile
-macos: safe
-```
 
 ## tracing library calls
 
@@ -152,7 +140,13 @@ int main(int argc, char* argv[]) {
 
 Once again we can add a target to the `Makefile` for this, but this time we’ll need to tell it to link [`zlib`](http://zlib.net) in when compiling.
 
-###### File Makefile, lines 7–10:
+###### File Makefile, lines 2–3:
+
+```makefile
+all: pass
+```
+
+###### File Makefile, lines 4–7:
 
 ```makefile
 pass: LDFLAGS += -lz
@@ -167,3 +161,12 @@ To get this example to compile under ubuntu, it needs `zlib`. If zlib isn’t in
     apt install libz-dev
 
 ### on macos
+
+###### File Makefile, lines 7–11:
+
+```makefile
+clean:
+	$(RM) -f safe pass *.o
+
+.PHONY: all clean
+```
