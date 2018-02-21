@@ -106,3 +106,59 @@ macos: safe
 ```
 
 ## tracing library calls
+
+What if we are not interested in syscalls, but we’d much rather know what calls a program does to a library? Well, that too can be found out!
+
+###### File pass.c, lines 0–36:
+
+```c
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <zlib.h>
+
+bool check(const char *passphrase) {
+  unsigned char data[] = {
+    120, 218,  43,  72,  77, 204,  43,  45,
+     41,  86,  72,  44,  74,  85,  40,  73,
+     77, 206, 200, 203,  76,  78, 204, 201,
+    169,  84, 200,  73,  77,  47, 205,  77,
+     45, 102,   0,   0, 204, 161,  12,  27
+  };
+
+  size_t output_len = 50;
+  unsigned char output[output_len];
+
+  uncompress(output, &output_len, data, sizeof(data));
+
+  return strcmp((char *) output, passphrase) == 0;
+}
+
+int main(int argc, char* argv[]) {
+  if(argc < 2) {
+    fprintf(stderr, "error: no passphrase provided.\n");
+    return 1;
+  }
+
+  if(!check(argv[1])) {
+    fprintf(stderr, "error: wrong passphrase.\n");
+    return 1;
+  }
+
+  printf("congratulations!\n");
+  return 0;
+}
+```
+
+Once again we can add a target to the `Makefile` for this, but this time we’ll need to tell it to link [`zlib`](http://zlib.net) in when compiling.
+
+###### File Makefile, lines 4–6:
+
+```makefile
+pass: LDFLAGS += -lz
+pass:
+```
+
+### on linux
+
+### on macos

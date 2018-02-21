@@ -1,1 +1,5 @@
+# ignore 'safe' binary
 safe
+
+# ignore 'pass' binary
+pass

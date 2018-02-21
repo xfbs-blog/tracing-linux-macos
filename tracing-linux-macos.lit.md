@@ -40,8 +40,13 @@ int main(int argc, char *argv[])
 
 And a Makefile to build things:
 
-```makefile @Makefile
+```makefile @Makefile #safe
 safe:
+```
+
+```gitignore @.gitignore !hide
+# ignore 'safe' binary
+safe
 ```
 
 ### on linux
@@ -53,7 +58,7 @@ I set up a quick ubuntu machine to do these tests.
 
 We'll need a way to build this — so we'll just add
 
-```makefile @Makefile
+```makefile @Makefile #linux
 linux: CC=musl-gcc
 linux: safe
 ```
@@ -93,8 +98,66 @@ So, strace can be used to snoop on a program and watch what it's doing to the sy
 
 Let's add a target for macOS to the makefile:
 
-```makefile @Makefile
+```makefile @Makefile #macos
 macos: safe
 ```
 
 ## tracing library calls
+
+What if we are not interested in syscalls, but we'd much rather know what calls a program does to a library? Well, that too can be found out!
+
+```c @pass.c
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <zlib.h>
+
+bool check(const char *passphrase) {
+  unsigned char data[] = {
+    120, 218,  43,  72,  77, 204,  43,  45,
+     41,  86,  72,  44,  74,  85,  40,  73,
+     77, 206, 200, 203,  76,  78, 204, 201,
+    169,  84, 200,  73,  77,  47, 205,  77,
+     45, 102,   0,   0, 204, 161,  12,  27
+  };
+
+  size_t output_len = 50;
+  unsigned char output[output_len];
+
+  uncompress(output, &output_len, data, sizeof(data));
+
+  return strcmp((char *) output, passphrase) == 0;
+}
+
+int main(int argc, char* argv[]) {
+  if(argc < 2) {
+    fprintf(stderr, "error: no passphrase provided.\n");
+    return 1;
+  }
+
+  if(!check(argv[1])) {
+    fprintf(stderr, "error: wrong passphrase.\n");
+    return 1;
+  }
+
+  printf("congratulations!\n");
+  return 0;
+}
+```
+
+Once again we can add a target to the `Makefile` for this, but this time we'll need to tell it to link [`zlib`](http://zlib.net) in when compiling.
+
+```makefile @Makefile #pass
+pass: LDFLAGS += -lz
+pass:
+```
+
+```gitignore @.gitignore !hide !pad
+# ignore 'pass' binary
+pass
+```
+
+### on linux
+
+
+### on macos
