@@ -52,24 +52,22 @@ safe
 
 ### on linux
 
-I set up an Ubuntu machine to do these tests. You'll need some packages to compile this example — `make`, a compiler (`gcc` or `clang` will do just fine), and I'l installing `musl` here, but it's optional, so if you don't want to use it, you don't have to.
+I'm using a fresh Ubuntu VM to perform these tests. You'll need some packages to compile this example — `make`, a compiler (`gcc` or `clang` will do just fine), and optionally `musl` and `musl-gcc`.
 
     $ apt update
     $ apt install -y build-essential musl musl-dev musl-tools
 
-Why musl? If we don't statically link to libc, there will be less clutter in the output, as loading the `ld` library and `libc` each produce syscalls. It's not really necessary, but it simplifies things for us right now.
-
-Why I'm using musl, you ask? Well, it's just for convenience really. Using musl means that your program is linked statically, and not dynamically, to it. And that means fewer syscalls, which translates to less clutter in the output. 
-
-Compiling and running it, we get:
+Compiling and running it (if you don't want to use `musl`, just remove the `CC=musl-gcc`), we get:
 
     $ CC=musl-gcc make linux
     musl-gcc     safe.c   -o safe
 
     $ ./safe
-    oops, secret file is missing!
+    error: secret file is missing.
 
-So, what is the name of the file that it's trying to access? `strace` can help us out here. What it does is intercept and print all syscalls that the binary does, meaning that we can use it to snoop which file the binary is trying to open:
+Why musl? Statically linking to `musl` instead of dynamically linking to your system `libc` means thatthe program will need to do fewer syscalls at startup.
+
+So, what is the name of the file that it's trying to access? [`strace`](https://strace.io) can help us out here. What it does is intercept and print all syscalls that the binary does, which is helpful in trying to find out what a program does. Here's the output I got on my Ubuntu machine:
 
     $ strace ./safe
     execve("./safe", ["./safe"], [/* 23 vars */]) = 0
@@ -83,17 +81,69 @@ So, what is the name of the file that it's trying to access? `strace` can help u
     exit_group(1)                           = ?
     +++ exited with 1 +++
 
-Here we can see that it calls the `access` syscall with `.IPSGNBIMHFCHAHMK`. That means that if we create this file manually, we'll be able to make the program succeed:
+Immediately you can see the `access` syscall, with `.IPSGNBIMHFCHAHMK`. That means the program is trying to establish whether a file with the given name exists. That means that when we create this file manually, we'll be able to make the program succeed:
 
     $ touch .IPSGNBIMHFCHAHMK
     $ ./safe
     congratulations!
 
-So, strace can be used to snoop on a program and watch what it's doing to the system — all of the syscalls it does will be in the output.
+So, `strace` can be used to snoop on a program and watch what it's doing to the system — all of the syscalls it does will be in the output.
 
 ### on macOS
 
-Let's add a target for macOS to the makefile:
+Compilation on macOS works basically the same way as it does on Linux — but now we won't be able to use musl, since it's not supported. Instead, we'll compile as usual with:
+
+    $ make safe
+    cc     safe.c   -o safe
+
+Unfortunately, `strace` itself doesn't exist on macOS. That would be too easy, wouldn't it? Instead, there is something else, called *DTrace*, which is actually fairly comprehensive and complicated — there is [a book](http://dtrace.org/guide/preface.html#preface) on it, there are [quite](https://8thlight.com/blog/colin-jones/2015/11/06/dtrace-even-better-than-strace-for-osx.html) a [few](https://blog.wallaroolabs.com/2017/12/dynamic-tracing-a-pony---python-program-with-dtrace/) blog [posts](https://hackernoon.com/running-a-process-for-exactly-ten-minutes-c6921f93a4a9) about it, but don't be intimidated yet.
+
+You don't need to know all of `DTrace` to be able to use it, all you need to know is which fontends do what. And the `dtruss` font-end happens to do basically the same as `strace`, meaning that it'll show you which syscalls a binary performs. Let's try it.
+
+    $ dtruss ./safe
+    dtrace: failed to initialize dtrace: DTrace requires additional privileges
+
+Well, DTrace doesn't work the same way as strace does, in spite of their similar naming. It is much more powerful than the latter — but that means that you need to use `sudo`. So let's try it again, with `sudo` this time:
+
+    $ sudo dtruss ./safe | tail -n 10
+    issetugid(0x101B2F000, 0x88, 0x1)                = 0 0
+    getpid(0x101B2F000, 0x88, 0x1)           = 38431 0
+    stat64("/AppleInternal/XBS/.isChrooted\0", 0x7FFF5E0D9D48, 0x1)          = -1 Err#2
+    stat64("/AppleInternal\0", 0x7FFF5E0D9CB8, 0x1)          = -1 Err#2
+    csops(0x961F, 0x7, 0x7FFF5E0D97D0)               = -1 Err#22
+    sysctl(0x7FFF5E0D9B90, 0x4, 0x7FFF5E0D9908)              = 0 0
+    csops(0x961F, 0x7, 0x7FFF5E0D90C0)               = -1 Err#22
+    proc_info(0x2, 0x961F, 0x11)             = 56 0
+    access(".IPSGNBIMHFCHAHMK\0", 0x0, 0x11)                 = -1 Err#2
+    write_nocancel(0x2, "error: secret file is missing.\n\0", 0x1F)          = 31 0
+
+If you don't pipe the output through `tail` (which you can try, if you are curious), you'll get a lot of noise from the system setup routines, which we aren't really interested in at this point. And just like in the `strace` example on Linux, we can see the `access` system call! With that information, the binary can be made to run on macOS, too:
+
+    $ touch .IPSGNBIMHFCHAHMK
+    $ ./safe
+    congratulations!
+
+There's just one little gotcha with DTrace, or rather with macOS: You can't, by default, trace builtin utilities, eg. anything in `/bin` or `/usr/bin`:
+
+    $ sudo dtruss /bin/ls
+    dtrace: failed to execute pp: dtrace cannot control executables signed with restricted entitlements
+    $ sudo dtruss /usr/bin/git
+    dtrace: failed to execute pp: dtrace cannot control executables signed with restricted entitlements
+
+What is going on there? This has something to do with the *System Integrity Protection* that Apple introduced. Apparently, there are a few things [not working under SIP](https://8thlight.com/blog/colin-jones/2017/02/02/dtrace-gotchas-on-osx.html). The only workaround that seems to be working for me is to manually copy whatever you are trying to trace to a different folder, like so:
+
+    $ cp `/usr/bin/which ls` .
+    $ sudo dtruss ./ls | tail -n 10
+    getdirentries64(0x5, 0x7FD761001000, 0x1000)             = 392 0
+    getdirentries64(0x5, 0x7FD761001000, 0x1000)             = 0 0
+    close_nocancel(0x5)              = 0 0
+    fchdir(0x4, 0x7FD761001000, 0x1000)              = 0 0
+    close_nocancel(0x4)              = 0 0
+    fstat64(0x1, 0x7FFF56D61AB8, 0x1000)             = 0 0
+    fchdir(0x3, 0x7FFF56D61AB8, 0x1000)              = 0 0
+    close_nocancel(0x3)              = 0 0
+    write_nocancel(0x1, ".git\n.gitignore\nMakefile\nls\npass.c\nsafe\nsafe.c\ntracing-linux-macos.lit.md\ntracing-linux-macos.md\n\004\b\0", 0x61)          = 97 0
+
 
 ## tracing library calls
 
