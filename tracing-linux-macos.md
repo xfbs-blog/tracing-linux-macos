@@ -63,6 +63,8 @@ Why I’m using musl, you ask? Well, it’s just for convenience really. Using m
 Compiling and running it, we get:
 
     $ CC=musl-gcc make linux
+    musl-gcc     safe.c   -o safe
+    
     $ ./safe
     oops, secret file is missing!
 
@@ -70,14 +72,13 @@ So, what is the name of the file that it’s trying to access? `strace` can help
 
     $ strace ./safe
     execve("./safe", ["./safe"], [/* 23 vars */]) = 0
-    arch_prctl(ARCH_SET_FS, 0x7f9ec510c088) = 0
-    set_tid_address(0x7f9ec510c0c0)         = 5767
-    mprotect(0x7f9ec510a000, 4096, PROT_READ) = 0
+    arch_prctl(ARCH_SET_FS, 0x7f0001204088) = 0
+    set_tid_address(0x7f00012040c0)         = 8456
+    mprotect(0x7f0001202000, 4096, PROT_READ) = 0
     mprotect(0x600000, 4096, PROT_READ)     = 0
     access(".IPSGNBIMHFCHAHMK", F_OK)       = -1 ENOENT (No such file or directory)
-    ioctl(1, TIOCGWINSZ, {ws_row=63, ws_col=205, ws_xpixel=0, ws_ypixel=0}) = 0
-    writev(1, [{"oops, secret file is missing!", 29}, {"\n", 1}], 2oops, secret file is missing!
-    ) = 30
+    writev(2, [{"", 0}, {"error: secret file is missing.\n", 31}], 2error: secret file is missing.
+    ) = 31
     exit_group(1)                           = ?
     +++ exited with 1 +++
 
@@ -95,7 +96,7 @@ Let’s add a target for macOS to the makefile:
 
 ## tracing library calls
 
-What if we are not interested in syscalls, but we’d much rather know what calls a program does to a library? Well, that too can be found out!
+What if we are not interested in syscalls, but we’d much rather know what calls a program does to a library, like the standard library or `zlib`? Let’s have a look at this little program right here. It taks a passphrase as argument, checks if the passphrase is correct, and returns a message depending that check.
 
 ###### File pass.c, lines 0–36:
 
@@ -138,13 +139,15 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-Once again we can add a target to the `Makefile` for this, but this time we’ll need to tell it to link [`zlib`](http://zlib.net) in when compiling.
+Once again we need to add a target to the `Makefile` for this:
 
 ###### File Makefile, lines 2–3:
 
 ```makefile
 all: pass
 ```
+
+This time, however, we can’t rely on the default built options, since this program needs to be linked with `zlib` so that it has access to the `uncompress` function. That is easily accomplished by adding the necessary flag to the LDFLAGS for `pass`, and spcifying how `make` should build it.
 
 ###### File Makefile, lines 4–7:
 
@@ -158,13 +161,55 @@ pass: pass.o
 
 To get this example to compile under ubuntu, it needs `zlib`. If zlib isn’t installed already, just install it with
 
-    apt install libz-dev
+    $ apt install libz-dev
+
+Next, we can go right ahead and compile everything using the rule we just created.
+
+    $ make pass
+    cc    -c -o pass.o pass.c
+    cc -o pass pass.o -lz
+
+When we run `pass`, we will see that it doesn’t work:
+
+    $ ./pass
+    error: no passphrase provided.
+    
+    $ ./pass "a passphrase"
+    error: wrong passphrase.
+
+Oh well. What now? `ltrace` to the rescue! Similar idea as `strace` — but instead of snooping on the syscalls the binary does, we’ll silently record and spit out all the library calls it does. That includes both `zlib` library calls and `libc` library calls!
+
+    $ ltrace ./pass
+    __libc_start_main(0x4008ba, 1, 0x7fff82c4d0a8, 0x400950 <unfinished ...>
+    fwrite("error: no passphrase provided.\n", 1, 31, 0x7f0a7c7cd540error: no passphrase provided.
+    )                                                              = 31
+    +++ exited (status 1) +++
+
+Oh well. That’s not terribly useful, is it? I guess we should give it a (wrong) passphrase to see what it does.
+
+    $ ltrace ./pass "a passphrase"
+    __libc_start_main(0x4008ba, 2, 0x7ffe3c481eb8, 0x400950 <unfinished ...>
+    uncompress(0x7ffe3c481d00, 0x7ffe3c481d58, 0x7ffe3c481d70, 40)       = 0
+    strcmp("peanuts are technically legumes", "a passphrase")            = 15
+    fwrite("error: wrong passphrase.\n", 1, 25, 0x7f47cb184540error: wrong passphrase.
+    )                                                                    = 25
+    +++ exited (status 1) +++
+
+As you can see, the program output is a little bit mangled with the `ltrace` output, for this example it’s fine because we can still see what’s going on, but you can tell ltrace to dump it’s output to a file. You can also filter which calls or which libraries it should trace, it has a bunch of useful options. But what we are looking for is there already and very visible, from the `strcmp` call we can see that it’s comparing the string that we passed as argument with `"peanuts are technically legumes"`. It seems like that is the string it’s looking for — let’s have a look:
+
+    $ ./pass "peanuts are technically legumes"
+    congratulations!
+
+That was easy, wasn’t it?
 
 ### on macos
 
-###### File Makefile, lines 7–11:
+To finish up our Makefile, I’ll add a `clean` target:
+
+###### File Makefile, lines 8–13:
 
 ```makefile
+# deletes all binaries & intermediates from compilation.
 clean:
 	$(RM) -f safe pass *.o
 
