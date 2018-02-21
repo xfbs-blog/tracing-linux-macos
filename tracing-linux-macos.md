@@ -1,10 +1,12 @@
-If you're coming from Linux, you may be familiar with the `ptrace` family of commands — `strace` and `ltrace`. If not, don't despair because I will show you how to use them.
+If you’re coming from Linux, you may be familiar with the `ptrace` family of commands — `strace` and `ltrace`. If not, don’t despair because I will show you how to use them.
 
 ## tracing system calls
 
-Let's say you have an application, a small program, and you want to know analyze what it does. In this example, I'll use a small program that checks if a file is present — if it's not present, it will fail with a warning. 
+Let’s say you have an application, a small program, and you want to know analyze what it does. In this example, I’ll use a small program that checks if a file is present — if it’s not present, it will fail with a warning.
 
-```c @safe.c
+###### File safe.c, lines 0–31:
+
+```c
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -38,12 +40,13 @@ int main(int argc, char *argv[])
 }
 ```
 
-
 ### on macOS
 
-Let's add a target for macOS to the makefile:
+Let’s add a target for macOS to the makefile:
 
-```makefile @Makefile
+###### File Makefile, lines 0–1:
+
+```makefile
 macos: safe
 ```
 
