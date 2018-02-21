@@ -58,7 +58,7 @@ I set up a quick ubuntu machine to do these tests.
 
 We'll need a way to build this — so we'll just add
 
-```makefile @Makefile #linux
+```makefile @Makefile #linux !pad
 linux: CC=musl-gcc
 linux: safe
 ```
@@ -98,7 +98,7 @@ So, strace can be used to snoop on a program and watch what it's doing to the sy
 
 Let's add a target for macOS to the makefile:
 
-```makefile @Makefile #macos
+```makefile @Makefile #macos !pad
 macos: safe
 ```
 
@@ -147,9 +147,10 @@ int main(int argc, char* argv[]) {
 
 Once again we can add a target to the `Makefile` for this, but this time we'll need to tell it to link [`zlib`](http://zlib.net) in when compiling.
 
-```makefile @Makefile #pass
+```makefile @Makefile #pass !pad
 pass: LDFLAGS += -lz
-pass:
+pass: pass.o
+	$(CC) -o $@ $< $(LDFLAGS)
 ```
 
 ```gitignore @.gitignore !hide !pad
@@ -157,7 +158,18 @@ pass:
 pass
 ```
 
+```gitignore @.gitignore !hide !pad
+# ignore all temporary object files
+*.o
+```
+
 ### on linux
+
+To get this example to compile under ubuntu, it needs `zlib`. If zlib isn't installed already, just install it with
+
+    apt install libz-dev
+
+
 
 
 ### on macos

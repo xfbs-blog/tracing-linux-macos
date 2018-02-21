@@ -3,3 +3,6 @@ safe
 
 # ignore 'pass' binary
 pass
+
+# ignore all temporary object files
+*.o
