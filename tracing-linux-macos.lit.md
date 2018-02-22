@@ -84,6 +84,7 @@ So, what is the name of the file that it's trying to access? That's where [`stra
     +++ exited with 1 +++
 
 ```makefile @Makefile #linux #strace !hide !pad
+# example: trace syscalls of './safe' with strace.
 linux-strace: safe
 	strace ./safe
 ```
@@ -125,6 +126,7 @@ Well, DTrace doesn't work the same way as `strace` does, in spite of their simil
     write_nocancel(0x2, "error: secret file is missing.\n\0", 0x1F)          = 31 0
 
 ```makefile @Makefile #macos #dtruss !hide !pad
+# example: trace syscalls of './safe' with dtruss.
 macos-dtruss: safe
 	sudo dtruss ./safe
 ```
@@ -157,6 +159,7 @@ What is going on there? This has something to do with the *System Integrity Prot
     write_nocancel(0x1, ".git\n.gitignore\nMakefile\nls\npass.c\nsafe\nsafe.c\ntracing-linux-macos.lit.md\ntracing-linux-macos.md\n\004\b\0", 0x61)          = 97 0
 
 ```makefile @Makefile #macos #dtruss #ls !hide !pad
+# example: trace syscalls of 'ls' with dtruss.
 macos-dtruss-ls:
 	cp `/usr/bin/which ls` .
 	sudo dtruss ./ls
@@ -215,6 +218,7 @@ all: pass
 Since this program needs to be linked with `zlib`, we'll have to tell make about that, too:
 
 ```makefile @Makefile #pass !pad
+# compile 'pass' and link libz.
 pass: LDFLAGS += -lz
 pass: pass.o
 	$(CC) -o $@ $< $(LDFLAGS)
@@ -269,6 +273,7 @@ Oh well. That's not terribly useful, is it? I guess we should give it a (wrong) 
     +++ exited (status 1) +++
 
 ```makefile @Makefile #linux #ltrace !hide !pad
+# example: trace library calls of './pass' with ltrace.
 linux-ltrace: pass
 	ltrace ./pass "a passphrase"
 ```
@@ -307,6 +312,7 @@ To trace all function calls in pass, you could do:
       0  <- main
 
 ```make @Makefile #macos #dtrace #calls !hide !pad
+# example: trace internal calls of './pass' with dtrace.
 macos-dtrace-calls: pass
 	sudo dtrace -F -n 'pid$$target:pass::entry' -n 'pid$$target:pass::return' -c "./pass hello"
 ```
@@ -330,6 +336,7 @@ For some reason (and this took me a bit to figure out), `strcmp` is being called
       0 264352           _platform_strcmp:entry   peanuts are technically legumes    hello
 
 ```makefile @Makefile #macos #dtrace #strcmp !hide !pad
+# example: trace 'strcmp' calls of './pass' with dtrace.
 macos-dtrace-strcmp: pass
 	sudo dtrace -n 'pid$$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello"
 ```
