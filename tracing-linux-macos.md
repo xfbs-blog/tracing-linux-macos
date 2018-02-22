@@ -51,7 +51,7 @@ For convenience, here’s a minimal `Makefile` to build this program.
 all: safe
 ```
 
-### on linux
+### On Linux
 
 I’m using a fresh Ubuntu VM to perform these tests. You’ll need some packages to compile this example — `make`, a compiler (`gcc` or `clang` will do just fine), and optionally `musl` and `musl-gcc`.
 
@@ -90,7 +90,7 @@ Immediately you can see the `access` syscall, with `.IPSGNBIMHFCHAHMK`. That mea
 
 So, `strace` can be used to snoop on a program and watch what it’s doing to the system — all of the syscalls it does will be in the output.
 
-### on macOS
+### On MacOS
 
 Compilation on macOS works basically the same way as it does on Linux — but now we won’t be able to use musl, since it’s not supported. Instead, we’ll compile as usual with:
 
@@ -209,7 +209,7 @@ pass: pass.o
 	$(CC) -o $@ $< $(LDFLAGS)
 ```
 
-### on linux
+### On Linux
 
 To get this example to compile under ubuntu, it needs `zlib`. If zlib isn’t installed already, just install it with
 
@@ -254,7 +254,7 @@ As you can see, the program output is a little bit mangled with the `ltrace` out
 
 That was easy, wasn’t it?
 
-### on macos
+### On MacOS
 
 Compiling this under macOS is exactly the same as under Linux, with
 
@@ -303,7 +303,7 @@ And once again, from this we can tell that the ‘secret’ passphrase is **, wh
     $ ./pass "peanuts are technically legumes"
     congratulations!
 
-## conclusion
+## Conclusion
 
 Being able to easily trace syscalls or library calls can be super handy when debugging. The `strace`, `dtruss` and `ltrace` utilities are definitely a must-have in a programmer’s toolbelt, even if many things can also be done in a debugger. DTrace however is a totally different beast. It takes some work to understand it, I ** scratched the surface of what it can do, but when you do have a grasp of it I think it’s a lot more powerful than a debugger or any of the other tools, because you can hook into **.
 
