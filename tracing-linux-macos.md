@@ -95,7 +95,7 @@ Compilation on macOS works basically the same way as it does on Linux — but no
     $ make safe
     cc     safe.c   -o safe
 
-Unfortunately, `strace` itself doesn’t exist on macOS. That would be too easy, wouldn’t it? Instead, there is something else, called , which is actually fairly comprehensive and complicated — there is [a book](http://dtrace.org/guide/preface.html#preface) on it, there are [quite](https://8thlight.com/blog/colin-jones/2015/11/06/dtrace-even-better-than-strace-for-osx.html) a [few](https://blog.wallaroolabs.com/2017/12/dynamic-tracing-a-pony---python-program-with-dtrace/) blog [posts](https://hackernoon.com/running-a-process-for-exactly-ten-minutes-c6921f93a4a9) about it, but don’t be intimidated yet.
+Unfortunately, `strace` itself doesn’t exist on macOS. That would be too easy, wouldn’t it? Instead, there is something else, called **, which is actually fairly comprehensive and complicated — there is [a book](http://dtrace.org/guide/preface.html#preface) on it, there are [quite](https://8thlight.com/blog/colin-jones/2015/11/06/dtrace-even-better-than-strace-for-osx.html) a [few](https://blog.wallaroolabs.com/2017/12/dynamic-tracing-a-pony---python-program-with-dtrace/) blog [posts](https://hackernoon.com/running-a-process-for-exactly-ten-minutes-c6921f93a4a9) about it, but don’t be intimidated yet.
 
 You don’t need to know all of `DTrace` to be able to use it, all you need to know is which fontends do what. And the `dtruss` font-end happens to do basically the same as `strace`, meaning that it’ll show you which syscalls a binary performs. Let’s try it.
 
@@ -129,7 +129,7 @@ There’s just one little gotcha with DTrace, or rather with macOS: You can’t,
     $ sudo dtruss /usr/bin/git
     dtrace: failed to execute pp: dtrace cannot control executables signed with restricted entitlements
 
-What is going on there? This has something to do with the  that Apple introduced. Apparently, there are a few things [not working under SIP](https://8thlight.com/blog/colin-jones/2017/02/02/dtrace-gotchas-on-osx.html). The only workaround that seems to be working for me is to manually copy whatever you are trying to trace to a different folder, like so:
+What is going on there? This has something to do with the ** that Apple introduced. Apparently, there are a few things [not working under SIP](https://8thlight.com/blog/colin-jones/2017/02/02/dtrace-gotchas-on-osx.html). The only workaround that seems to be working for me is to manually copy whatever you are trying to trace to a different folder, like so:
 
     $ cp `/usr/bin/which ls` .
     $ sudo dtruss ./ls | tail -n 10
@@ -253,14 +253,47 @@ That was easy, wasn’t it?
 
 ### on macos
 
-To finish up our Makefile, I’ll add a `clean` target:
+Compiling this under macOS is exactly the same as under Linux, with
 
-###### File Makefile, lines 8–13:
+    $ make pass
+    cc    -c -o pass.o pass.c
+    cc -o pass pass.o -lz
 
-```makefile
-# deletes all binaries & intermediates from compilation.
-clean:
-	$(RM) -f safe pass *.o
+However, once again we don’t have `ltrace` on macOS. And there isn’t really a direct equivalent to it — this is the part where we have to play around with DTrace. It took me a while to figure this out. Thankfully, there were a few useful [articles](https://www.joyent.com/blog/bruning-questions-debugging) and obviously, the [book](http://dtrace.org/guide/preface.html#preface).
 
-.PHONY: all clean
-```
+The way `dtrace` works is that it offers problems — lots of them, actually. You can trace the probes themselves, or you can attach functions to them. I won’t really go into much detail about DTrace, there is simply too much, and I don’t understand all of it well enough yet to be able to explain it.
+
+To trace all function calls in pass, you could do:
+
+    $ sudo dtrace -F -n 'pid$target:pass::entry' -n 'pid$target:pass::return' -c "./pass hello"
+    
+    trace: description 'pid$target:pass::entry' matched 2 probes
+    dtrace: description 'pid$target:pass::return' matched 2 probes
+    error: wrong passphrase.
+    dtrace: pid 54794 has exited
+    CPU FUNCTION
+      0  -> main
+      0    -> check
+      0    <- check
+      0  <- main
+
+I think the two pieces of information that you need to know to understand this is that `-F` tells `dtrace` to show us the call stack nicely with the arrows, and `pid$target:pass::entry` can be read as “attach a probe to all functions in the process with the ** `$target`, that are part of the module `pass` (as opposed to being part of another library, for example), the empty third argument instructs to not filter by function name, and `entry` and `return` matches all function invocations (entries) and returns.
+
+With this in mind, it’s possible to attach a probe to all `strcmp` calls, and print their arguments. Note that for some reason, `strcmp` is being called as `_system_strcmp`, so I’ve used a wildcard here to be more readable. Apparently, `copyinstr()` is necessary to copy the strings from userspace into kernel memory to be able to print them — I don’t exactly understand this, but it works.
+
+    $ sudo dtrace -n 'pid$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello" 2>&1 | tail -n 10
+    
+      0 264352           _platform_strcmp:entry   __PAGEZERO                         __TEXT
+      0 264352           _platform_strcmp:entry   __TEXT                             __TEXT
+      0 264352           _platform_strcmp:entry   __DATA                             __TEXT
+      0 264352           _platform_strcmp:entry   __LINKEDIT                         __TEXT
+      0 264352           _platform_strcmp:entry   __PAGEZERO                         __TEXT
+      0 264352           _platform_strcmp:entry   __TEXT                             __TEXT
+      0 264352           _platform_strcmp:entry   __DATA                             __TEXT
+      0 264352           _platform_strcmp:entry   __LINKEDIT                         __TEXT
+      0 264352           _platform_strcmp:entry   peanuts are technically legumes    hello
+
+And once again, from this we can tell that the ‘secret’ passphrase is **, which is easily comfirmed by running:
+
+    $ ./pass "peanuts are technically legumes"
+    congratulations!

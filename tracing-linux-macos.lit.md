@@ -259,14 +259,55 @@ That was easy, wasn't it?
 
 ### on macos
 
-To finish up our Makefile, I'll add a `clean` target:
+Compiling this under macOS is exactly the same as under Linux, with
 
-```makefile @Makefile #clean !pad
+    $ make pass
+    cc    -c -o pass.o pass.c
+    cc -o pass pass.o -lz
+
+However, once again we don't have `ltrace` on macOS. And there isn't really a direct equivalent to it — this is the part where we have to play around with DTrace. It took me a while to figure this out. Thankfully, there were a few useful [articles](https://www.joyent.com/blog/bruning-questions-debugging) and obviously, the [book](http://dtrace.org/guide/preface.html#preface).
+
+The way `dtrace` works is that it offers problems — lots of them, actually. You can trace the probes themselves, or you can attach functions to them. I won't really go into much detail about DTrace, there is simply too much, and I don't understand all of it well enough yet to be able to explain it.
+
+To trace all function calls in pass, you could do:
+
+    $ sudo dtrace -F -n 'pid$target:pass::entry' -n 'pid$target:pass::return' -c "./pass hello"
+
+    trace: description 'pid$target:pass::entry' matched 2 probes
+    dtrace: description 'pid$target:pass::return' matched 2 probes
+    error: wrong passphrase.
+    dtrace: pid 54794 has exited
+    CPU FUNCTION
+      0  -> main
+      0    -> check
+      0    <- check
+      0  <- main
+
+I think the two pieces of information that you need to know to understand this is that `-F` tells `dtrace` to show us the call stack nicely with the arrows, and `pid$target:pass::entry` can be read as "attach a probe to all functions in the process with the *PID* `$target`, that are part of the module `pass` (as opposed to being part of another library, for example), the empty third argument instructs to not filter by function name, and `entry` and `return` matches all function invocations (entries) and returns.
+
+With this in mind, it's possible to attach a probe to all `strcmp` calls, and print their arguments. Note that for some reason, `strcmp` is being called as `_system_strcmp`, so I've used a wildcard here to be more readable. Apparently, `copyinstr()` is necessary to copy the strings from userspace into kernel memory to be able to print them — I don't exactly understand this, but it works.
+
+    $ sudo dtrace -n 'pid$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello" 2>&1 | tail -n 10
+
+      0 264352           _platform_strcmp:entry   __PAGEZERO                         __TEXT
+      0 264352           _platform_strcmp:entry   __TEXT                             __TEXT
+      0 264352           _platform_strcmp:entry   __DATA                             __TEXT
+      0 264352           _platform_strcmp:entry   __LINKEDIT                         __TEXT
+      0 264352           _platform_strcmp:entry   __PAGEZERO                         __TEXT
+      0 264352           _platform_strcmp:entry   __TEXT                             __TEXT
+      0 264352           _platform_strcmp:entry   __DATA                             __TEXT
+      0 264352           _platform_strcmp:entry   __LINKEDIT                         __TEXT
+      0 264352           _platform_strcmp:entry   peanuts are technically legumes    hello
+
+And once again, from this we can tell that the 'secret' passphrase is *peanuts are technically legumes*, which is easily comfirmed by running:
+
+    $ ./pass "peanuts are technically legumes"
+    congratulations!
+
+```makefile @Makefile #clean !pad !hide
 # deletes all binaries & intermediates from compilation.
 clean:
 	$(RM) -f safe pass *.o
 
 .PHONY: all clean
 ```
-
-
