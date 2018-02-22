@@ -1,6 +1,8 @@
-If you’re coming from Linux, you may be familiar with the `ptrace` family of commands — `strace` and `ltrace`. If not, don’t despair because I will show you how to use them.
+If you’re coming from Linux, you may be familiar with the `ptrace` family of commands — `strace` and `ltrace`. If you’re coming from macOS, you may have had brief encounters with `dtruss` or `dtrace`, instead.
 
-## tracing system calls
+If you haven’t heard of them before or haven’t had the chance to play with them, this post is for you. I’m going to show you what they do and why they are important tools to know.
+
+## Tracing syscalls
 
 Let’s say you have an application, a small program, and you want to know analyze what it does. In this example, I’ll use a small program that checks if a file is present — if it’s not present, it will fail with a warning. I am using the `access` function, which is a POSIX API, to check if a file exists.
 
@@ -40,7 +42,7 @@ int main(int argc, char *argv[])
 }
 ```
 
-For convenience, we can also use a small `Makefile` to build things, which is really simple at this point since this program can be built with all default actions.
+For convenience, here’s a minimal `Makefile` to build this program.
 
 ###### File Makefile, lines 0–2:
 
@@ -56,7 +58,7 @@ I’m using a fresh Ubuntu VM to perform these tests. You’ll need some package
     $ apt update
     $ apt install -y build-essential musl musl-dev musl-tools
 
-Compiling and running it (if you don’t want to use `musl`, just remove the `CC=musl-gcc`), we get:
+Compiling and running it (if you don’t want to use musl, just remove the `CC=musl-gcc`), we get:
 
     $ CC=musl-gcc make linux
     musl-gcc     safe.c   -o safe
@@ -64,9 +66,9 @@ Compiling and running it (if you don’t want to use `musl`, just remove the `CC
     $ ./safe
     error: secret file is missing.
 
-Why musl? Statically linking to `musl` instead of dynamically linking to your system `libc` means thatthe program will need to do fewer syscalls at startup.
+Why musl? Statically linking to musl instead of dynamically linking to your system `libc` means that the program will need to do fewer syscalls at startup.
 
-So, what is the name of the file that it’s trying to access? [`strace`](https://strace.io) can help us out here. What it does is intercept and print all syscalls that the binary does, which is helpful in trying to find out what a program does. Here’s the output I got on my Ubuntu machine:
+So, what is the name of the file that it’s trying to access? That’s where [`strace`](https://strace.io) comes in! Basically, it intercepts and prints all syscalls that a program performs. That means we can sit back and watch what the program is doing — which files it is opening, what it is writing to those files, and much more. Here’s what strace tells me about my program when I run it on the Ubuntu machine:
 
     $ strace ./safe
     execve("./safe", ["./safe"], [/* 23 vars */]) = 0
@@ -80,7 +82,7 @@ So, what is the name of the file that it’s trying to access? [`strace`](https:
     exit_group(1)                           = ?
     +++ exited with 1 +++
 
-Immediately you can see the `access` syscall, with `.IPSGNBIMHFCHAHMK`. That means the program is trying to establish whether a file with the given name exists. That means that when we create this file manually, we’ll be able to make the program succeed:
+Immediately you can see the `access` syscall, with `.IPSGNBIMHFCHAHMK`. That means the program is asking the kernel if a file with this name exists. The kernel replies with `ENOENT`, meaning that it doesn’t. What if we created that file and ran the program again?
 
     $ touch .IPSGNBIMHFCHAHMK
     $ ./safe
@@ -102,7 +104,7 @@ You don’t need to know all of `DTrace` to be able to use it, all you need to k
     $ dtruss ./safe
     dtrace: failed to initialize dtrace: DTrace requires additional privileges
 
-Well, DTrace doesn’t work the same way as strace does, in spite of their similar naming. It is much more powerful than the latter — but that means that you need to use `sudo`. So let’s try it again, with `sudo` this time:
+Well, DTrace doesn’t work the same way as `strace` does, in spite of their similar naming. While `strace` just politely asks the kernel to monitor a process, `DTrace` hooks directly into the kernel, meaning that you potentially have access to every secret of every user, and you can actually break things (if you try really, ** hard). Needless to say, `DTrace` and any related tools require `root` privileges to use.
 
     $ sudo dtruss ./safe | tail -n 10
     issetugid(0x101B2F000, 0x88, 0x1)                = 0 0
@@ -143,7 +145,7 @@ What is going on there? This has something to do with the ** that Apple introduc
     close_nocancel(0x3)              = 0 0
     write_nocancel(0x1, ".git\n.gitignore\nMakefile\nls\npass.c\nsafe\nsafe.c\ntracing-linux-macos.lit.md\ntracing-linux-macos.md\n\004\b\0", 0x61)          = 97 0
 
-## tracing library calls
+## Tracing library calls
 
 What if we are not interested in syscalls, but we’d much rather know what calls a program does to a library, like the standard library or `zlib`? Let’s have a look at this little program right here. It taks a passphrase as argument, checks if the passphrase is correct, and returns a message depending that check.
 
@@ -189,6 +191,7 @@ int main(int argc, char* argv[]) {
 ```
 
 Once again we need to add a target to the `Makefile` for this:
+We’ll need to add a target to the `Makefile` to be able to compile this.
 
 ###### File Makefile, lines 2–3:
 
@@ -196,7 +199,7 @@ Once again we need to add a target to the `Makefile` for this:
 all: pass
 ```
 
-This time, however, we can’t rely on the default built options, since this program needs to be linked with `zlib` so that it has access to the `uncompress` function. That is easily accomplished by adding the necessary flag to the LDFLAGS for `pass`, and spcifying how `make` should build it.
+Since this program needs to be linked with `zlib`, we’ll have to tell make about that, too:
 
 ###### File Makefile, lines 4–7:
 
@@ -279,7 +282,9 @@ To trace all function calls in pass, you could do:
 
 I think the two pieces of information that you need to know to understand this is that `-F` tells `dtrace` to show us the call stack nicely with the arrows, and `pid$target:pass::entry` can be read as “attach a probe to all functions in the process with the ** `$target`, that are part of the module `pass` (as opposed to being part of another library, for example), the empty third argument instructs to not filter by function name, and `entry` and `return` matches all function invocations (entries) and returns.
 
-With this in mind, it’s possible to attach a probe to all `strcmp` calls, and print their arguments. Note that for some reason, `strcmp` is being called as `_system_strcmp`, so I’ve used a wildcard here to be more readable. Apparently, `copyinstr()` is necessary to copy the strings from userspace into kernel memory to be able to print them — I don’t exactly understand this, but it works.
+With this in mind, it’s possible to attach a probe to all `strcmp` calls, and print their arguments.
+
+For some reason (and this took me a bit to figure out), `strcmp` is being called as `_system_strcmp`. I used a wildcard that matches that. Apparently, `copyinstr()` is necessary to copy the strings from userspace into kernel memory to be able to print them — I don’t exactly understand this, but it works.
 
     $ sudo dtrace -n 'pid$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello" 2>&1 | tail -n 10
     
@@ -300,7 +305,7 @@ And once again, from this we can tell that the ‘secret’ passphrase is **, wh
 
 ## conclusion
 
-Being able to easily trace syscalls or library calls can be super handy sometimes when debugging something. The `strace`, `dtruss` and `ltrace` utilities are definitely a must-have in a programmer’s toolbelt, even if many things can also be done in a debugger. DTrace however is a totally different beast. It takes some work to understand it, I ** scratched the surface of what it can do, but when you do have a grasp of it I think it’s a lot more powerful than a debugger or any of the other tools.
+Being able to easily trace syscalls or library calls can be super handy when debugging. The `strace`, `dtruss` and `ltrace` utilities are definitely a must-have in a programmer’s toolbelt, even if many things can also be done in a debugger. DTrace however is a totally different beast. It takes some work to understand it, I ** scratched the surface of what it can do, but when you do have a grasp of it I think it’s a lot more powerful than a debugger or any of the other tools, because you can hook into **.
 
 If you want to play around with the code from this article, you may get it by running
 
