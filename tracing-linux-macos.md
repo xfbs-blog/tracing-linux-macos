@@ -297,3 +297,13 @@ And once again, from this we can tell that the ‘secret’ passphrase is **, wh
 
     $ ./pass "peanuts are technically legumes"
     congratulations!
+
+## conclusion
+
+Being able to easily trace syscalls or library calls can be super handy sometimes when debugging something. The `strace`, `dtruss` and `ltrace` utilities are definitely a must-have in a programmer’s toolbelt, even if many things can also be done in a debugger. DTrace however is a totally different beast. It takes some work to understand it, I ** scratched the surface of what it can do, but when you do have a grasp of it I think it’s a lot more powerful than a debugger or any of the other tools.
+
+If you want to play around with the code from this article, you may get it by running
+
+    $ git clone https://gitlab.com/xfbs-blog/tracing-linux-macos.git
+
+Feel free to send in corrections or suggesions.
