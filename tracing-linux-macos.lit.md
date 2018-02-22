@@ -285,6 +285,10 @@ To trace all function calls in pass, you could do:
       0    <- check
       0  <- main
 
+```bash @dtrace-trace-pass.sh !hide
+sudo dtrace -F -n 'pid$target:pass::entry' -n 'pid$target:pass::return' -c "./pass hello"
+```
+
 I think the two pieces of information that you need to know to understand this is that `-F` tells `dtrace` to show us the call stack nicely with the arrows, and `pid$target:pass::entry` can be read as "attach a probe to all functions in the process with the *PID* `$target`, that are part of the module `pass` (as opposed to being part of another library, for example), the empty third argument instructs to not filter by function name, and `entry` and `return` matches all function invocations (entries) and returns.
 
 With this in mind, it's possible to attach a probe to all `strcmp` calls, and print their arguments.
@@ -302,6 +306,10 @@ For some reason (and this took me a bit to figure out), `strcmp` is being called
       0 264352           _platform_strcmp:entry   __DATA                             __TEXT
       0 264352           _platform_strcmp:entry   __LINKEDIT                         __TEXT
       0 264352           _platform_strcmp:entry   peanuts are technically legumes    hello
+
+```bash @dtrace-trace-strcmp.sh !hide
+sudo dtrace -n 'pid$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello"
+```
 
 And once again, from this we can tell that the 'secret' passphrase is *peanuts are technically legumes*, which is easily comfirmed by running:
 
