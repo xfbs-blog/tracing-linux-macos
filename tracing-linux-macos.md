@@ -201,7 +201,7 @@ all: pass
 
 Since this program needs to be linked with `zlib`, we’ll have to tell make about that, too:
 
-###### File Makefile, lines 4–7:
+###### File Makefile, lines 23–26:
 
 ```makefile
 pass: LDFLAGS += -lz

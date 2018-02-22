@@ -83,6 +83,11 @@ So, what is the name of the file that it's trying to access? That's where [`stra
     exit_group(1)                           = ?
     +++ exited with 1 +++
 
+```makefile @Makefile #linux #strace !hide !pad
+linux-strace: safe
+	strace ./safe
+```
+
 Immediately you can see the `access` syscall, with `.IPSGNBIMHFCHAHMK`. That means the program is asking the kernel if a file with this name exists. The kernel replies with `ENOENT`, meaning that it doesn't. What if we created that file and ran the program again? 
 
     $ touch .IPSGNBIMHFCHAHMK
@@ -119,6 +124,11 @@ Well, DTrace doesn't work the same way as `strace` does, in spite of their simil
     access(".IPSGNBIMHFCHAHMK\0", 0x0, 0x11)                 = -1 Err#2
     write_nocancel(0x2, "error: secret file is missing.\n\0", 0x1F)          = 31 0
 
+```makefile @Makefile #macos #dtruss !hide !pad
+macos-dtruss: safe
+	sudo dtruss ./safe
+```
+
 If you don't pipe the output through `tail` (which you can try, if you are curious), you'll get a lot of noise from the system setup routines, which we aren't really interested in at this point. And just like in the `strace` example on Linux, we can see the `access` system call! With that information, the binary can be made to run on macOS, too:
 
     $ touch .IPSGNBIMHFCHAHMK
@@ -145,6 +155,12 @@ What is going on there? This has something to do with the *System Integrity Prot
     fchdir(0x3, 0x7FFF56D61AB8, 0x1000)              = 0 0
     close_nocancel(0x3)              = 0 0
     write_nocancel(0x1, ".git\n.gitignore\nMakefile\nls\npass.c\nsafe\nsafe.c\ntracing-linux-macos.lit.md\ntracing-linux-macos.md\n\004\b\0", 0x61)          = 97 0
+
+```makefile @Makefile #macos #dtruss #ls !hide !pad
+macos-dtruss-ls:
+	cp `/usr/bin/which ls` .
+	sudo dtruss ./ls
+```
 
 ## Tracing library calls
 
@@ -252,6 +268,11 @@ Oh well. That's not terribly useful, is it? I guess we should give it a (wrong) 
     )                                                                    = 25
     +++ exited (status 1) +++
 
+```makefile @Makefile #linux #ltrace !hide !pad
+linux-ltrace: pass
+	ltrace ./pass "a passphrase"
+```
+
 As you can see, the program output is a little bit mangled with the `ltrace` output, for this example it's fine because we can still see what's going on, but you can tell ltrace to dump it's output to a file. You can also filter which calls or which libraries it should trace, it has a bunch of useful options. But what we are looking for is there already and very visible, from the `strcmp` call we can see that it's comparing the string that we passed as argument with `"peanuts are technically legumes"`. It seems like that is the string it's looking for — let's have a look:
 
     $ ./pass "peanuts are technically legumes"
@@ -285,8 +306,9 @@ To trace all function calls in pass, you could do:
       0    <- check
       0  <- main
 
-```bash @dtrace-trace-pass.sh !hide
-sudo dtrace -F -n 'pid$target:pass::entry' -n 'pid$target:pass::return' -c "./pass hello"
+```make @Makefile #macos #dtrace #calls !hide !pad
+macos-dtrace-calls: pass
+	sudo dtrace -F -n 'pid$$target:pass::entry' -n 'pid$$target:pass::return' -c "./pass hello"
 ```
 
 I think the two pieces of information that you need to know to understand this is that `-F` tells `dtrace` to show us the call stack nicely with the arrows, and `pid$target:pass::entry` can be read as "attach a probe to all functions in the process with the *PID* `$target`, that are part of the module `pass` (as opposed to being part of another library, for example), the empty third argument instructs to not filter by function name, and `entry` and `return` matches all function invocations (entries) and returns.
@@ -307,8 +329,9 @@ For some reason (and this took me a bit to figure out), `strcmp` is being called
       0 264352           _platform_strcmp:entry   __LINKEDIT                         __TEXT
       0 264352           _platform_strcmp:entry   peanuts are technically legumes    hello
 
-```bash @dtrace-trace-strcmp.sh !hide
-sudo dtrace -n 'pid$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello"
+```makefile @Makefile #macos #dtrace #strcmp !hide !pad
+macos-dtrace-strcmp: pass
+	sudo dtrace -n 'pid$$target::*strcmp:entry{trace(copyinstr(arg0)); trace(copyinstr(arg1))}' -c "./pass hello"
 ```
 
 And once again, from this we can tell that the 'secret' passphrase is *peanuts are technically legumes*, which is easily comfirmed by running:
@@ -319,9 +342,9 @@ And once again, from this we can tell that the 'secret' passphrase is *peanuts a
 ```makefile @Makefile #clean !pad !hide
 # deletes all binaries & intermediates from compilation.
 clean:
-	$(RM) -f safe pass *.o
+	$(RM) -f safe pass ls *.o
 
-.PHONY: all clean
+.PHONY: all clean linux-strace linux-ltrace macos-dtruss macos-dtruss-ls macos-dtrace-calls macos-dtrace-strcmp
 ```
 
 ## conclusion
